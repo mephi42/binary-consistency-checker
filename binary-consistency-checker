@@ -14,7 +14,7 @@ class CaseClass(object):
     def __ne__(self, other):
         return not (self == other)
 
-    def __hash__(self) -> int:
+    def __hash__(self):
         return hash(tuple(self.__dict__.items()))
 
     def __str__(self):
@@ -95,7 +95,7 @@ for path in sys.argv[1:]:
     with open(path, 'rb') as fp:
         elf = elftools.elf.elffile.ELFFile(fp)
         if not elf.has_dwarf_info():
-            logging.warning('%s does not have a DWARF info')
+            logging.warning('%s does not have a DWARF info', path)
             continue
         dwarf = elf.get_dwarf_info()
         for cu in dwarf.iter_CUs():

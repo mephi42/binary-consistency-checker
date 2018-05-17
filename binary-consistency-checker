@@ -1,0 +1,117 @@
+#!/usr/bin/env python
+import logging
+import sys
+
+import elftools.elf.elffile
+
+
+class CaseClass(object):
+    def __eq__(self, other):
+        if isinstance(self, other.__class__):
+            return self.__dict__ == other.__dict__
+        return NotImplemented
+
+    def __ne__(self, other):
+        return not (self == other)
+
+    def __hash__(self) -> int:
+        return hash(tuple(self.__dict__.items()))
+
+    def __str__(self):
+        return '%s(%s)' % (self.__class__.__name__, self.__dict__)
+
+    __repr__ = __str__
+
+
+class ClassInfo(CaseClass):
+    def __init__(self, byte_size):
+        self.byte_size = byte_size
+
+
+class ClassLocation(CaseClass):
+    def __init__(self, cu_str, decl_file, decl_line):
+        self.cu_str = cu_str
+        self.decl_file = decl_file
+        self.decl_line = decl_line
+
+
+def inspect_class(die, cu_str, lineprogram, class_name, classes):
+    logging.info('    Class: %s', class_name)
+    byte_size = die.attributes.get('DW_AT_byte_size')
+    if byte_size is None:
+        # Incomplete class - inconsistencies impossible.
+        return
+    byte_size = byte_size.value
+    class_infos = classes.get(class_name)
+    if class_infos is None:
+        class_infos = {}
+        classes[class_name] = class_infos
+    class_info = ClassInfo(byte_size=byte_size)
+    class_locations = class_infos.get(class_info)
+    if class_locations is None:
+        class_locations = []
+        class_infos[class_info] = class_locations
+    decl_file = die.attributes.get('DW_AT_decl_file')
+    if decl_file is not None:
+        decl_file = lineprogram['file_entry'][decl_file.value - 1]
+        decl_dir = lineprogram['include_directory'][decl_file.dir_index - 1]
+        decl_file = '%s/%s' % (decl_dir.decode(), decl_file.name.decode())
+    decl_line = die.attributes.get('DW_AT_decl_line')
+    if decl_line is not None:
+        decl_line = decl_line.value
+    class_locations.append(ClassLocation(cu_str, decl_file, decl_line))
+
+
+class_tags = (
+    'DW_TAG_class_type',
+    'DW_TAG_structure_type',
+    'DW_TAG_union_type',
+)
+
+
+def traverse(die, cu_str, lineprogram, namespace, classes):
+    if die.tag == 'DW_TAG_namespace':
+        namespace_name = die.attributes.get('DW_AT_name')
+        if namespace_name is None:
+            # Anonymous namespace - inconsistencies impossible.
+            return
+        namespace += namespace_name.value.decode() + "::"
+    if die.tag in class_tags:
+        class_name = die.attributes.get('DW_AT_name')
+        if class_name is None:
+            # Anonymous class - inconsistencies impossible.
+            return
+        class_name = namespace + class_name.value.decode()
+        namespace = class_name + "::"
+        inspect_class(die, cu_str, lineprogram, class_name, classes)
+    for child_die in die.iter_children():
+        traverse(child_die, cu_str, lineprogram, namespace, classes)
+
+
+logging.basicConfig(level=logging.INFO)
+classes = {}
+for path in sys.argv[1:]:
+    logging.info('ELF: %s', path)
+    with open(path, 'rb') as fp:
+        elf = elftools.elf.elffile.ELFFile(fp)
+        if not elf.has_dwarf_info():
+            logging.warning('%s does not have a DWARF info')
+            continue
+        dwarf = elf.get_dwarf_info()
+        for cu in dwarf.iter_CUs():
+            die = cu.get_top_DIE()
+            cu_path = die.get_full_path()
+            logging.info('  CU: %s', cu_path)
+            lineprogram = dwarf.line_program_for_CU(cu)
+            cu_str = '%s:%s' % (path, cu_path)
+            traverse(die, cu_str, lineprogram, '::', classes)
+exitcode = 0
+for class_name, class_infos in classes.items():
+    if len(class_infos) > 1:
+        logging.error('Inconsistent class: %s', class_name)
+        for class_info, class_locations in class_infos.items():
+            logging.error('  Info: %s', class_info)
+            for class_location in class_locations:
+                logging.error('    Location: %s', class_location)
+        exitcode = 1
+sys.exit(exitcode)

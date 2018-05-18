@@ -107,7 +107,9 @@ for path in sys.argv[1:]:
         for cu in dwarf.iter_CUs():
             die = cu.get_top_DIE()
             comp_dir = die.attributes.get('DW_AT_comp_dir')
-            if comp_dir is not None and isinstance(comp_dir.value, int):
+            name = die.attributes.get('DW_AT_name')
+            if ((comp_dir is not None and isinstance(comp_dir.value, int)) or
+                    (name is not None and isinstance(name.value, int))):
                 # pyelftools bug (presumably in DW_TAG_partial_unit handling)
                 continue
             cu_path = die.get_full_path()

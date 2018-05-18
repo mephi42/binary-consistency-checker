@@ -103,11 +103,11 @@ for path in sys.argv[1:]:
         dwarf = elf.get_dwarf_info()
         for cu in dwarf.iter_CUs():
             die = cu.get_top_DIE()
-            try:
-                cu_path = die.get_full_path()
-            except AttributeError:
+            comp_dir = die.attributes.get('DW_AT_comp_dir')
+            if comp_dir is not None and isinstance(comp_dir.value, int):
                 # pyelftools bug (presumably in DW_TAG_partial_unit handling)
                 continue
+            cu_path = die.get_full_path()
             logging.info('  CU: %s', cu_path)
             lineprogram = dwarf.line_program_for_CU(cu)
             cu_str = '%s:%s' % (path, cu_path)

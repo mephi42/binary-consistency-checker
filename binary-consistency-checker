@@ -81,6 +81,9 @@ def traverse(die, cu_str, lineprogram, namespace, classes):
         if class_name is None:
             # Anonymous class - inconsistencies impossible.
             return
+        if isinstance(class_name.value, int):
+            # pyelftools bug (presumably in DW_TAG_partial_unit handling)
+            return
         class_name = namespace + class_name.value.decode()
         namespace = class_name + "::"
         inspect_class(die, cu_str, lineprogram, class_name, classes)
@@ -100,7 +103,11 @@ for path in sys.argv[1:]:
         dwarf = elf.get_dwarf_info()
         for cu in dwarf.iter_CUs():
             die = cu.get_top_DIE()
-            cu_path = die.get_full_path()
+            try:
+                cu_path = die.get_full_path()
+            except AttributeError:
+                # pyelftools bug (presumably in DW_TAG_partial_unit handling)
+                continue
             logging.info('  CU: %s', cu_path)
             lineprogram = dwarf.line_program_for_CU(cu)
             cu_str = '%s:%s' % (path, cu_path)

@@ -75,6 +75,9 @@ def traverse(die, cu_str, lineprogram, namespace, classes):
         if namespace_name is None:
             # Anonymous namespace - inconsistencies impossible.
             return
+        if isinstance(namespace_name.value, int):
+            # pyelftools bug (presumably in DW_TAG_partial_unit handling)
+            return
         namespace += namespace_name.value.decode() + "::"
     if die.tag in class_tags:
         class_name = die.attributes.get('DW_AT_name')
